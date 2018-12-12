@@ -1,0 +1,18 @@
+- mülltonnen mit unterirdischem sammel ding (große städte haben sowas) ob die voll sind
+- glascontainer
+- schaltkästen stadt
+- hochwasser
+- wassertemperatur
+- parkplatz zustand (freie plätze)
+- heuballen temperatur / feuchtigkeit
+- rentner lebenserkennung (lüftet er, geht er mal aufs klo, diese matten vor betten)
+- auto/fahrrad tracking
+- schiff tracking fürn hafenmeister
+- autozähler für ampeln evtl
+- generell mülltonnen
+- aufzüge zustand
+- tür überwachen (scheune, …)
+- ggf nahverkehr
+- wlan geräte an diesem ort (crowd managment)
+- wlan qualität und verfügbarkeit (db macht das in hamburg um zu schauen wie züge und co das stören)
+- abwasser system verstopfungen
