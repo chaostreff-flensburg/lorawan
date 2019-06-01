@@ -14,13 +14,13 @@
 // to create an account, or if you need your session keys.
 
 // Network Session Key (MSB)
-uint8_t NwkSkey[16] = { 0xB3, 0x41, 0xD4, 0x27, 0x55, 0x80, 0x7B, 0xB2, 0xAE, 0x7E, 0x92, 0x48, 0xDE, 0xFD, 0xB3, 0x65 };
+uint8_t NwkSkey[16] = {  };
 
 // Application Session Key (MSB)
-uint8_t AppSkey[16] = { 0x60, 0xB3, 0x4A, 0x1F, 0xD9, 0xA3, 0xF7, 0xE4, 0xB6, 0xEA, 0xB3, 0x60, 0x09, 0x7C, 0x78, 0x71 };
+uint8_t AppSkey[16] = {  };
 
 // Device Address (MSB)
-uint8_t DevAddr[4] = { 0x26, 0x01, 0x18, 0x1F };
+uint8_t DevAddr[4] = {  };
 
 // Pinout for Adafruit Feather 32u4 LoRa
 TinyLoRa lora = TinyLoRa(7, 8);
@@ -342,19 +342,23 @@ void loop()
 
     gps_fix currentFix = gps.read();
 
-//    unsigned char loraData[11] = {"hello LoRa"};
-    if (currentFix.valid.location && currentFix.valid.altitude) {
+    if (currentFix.valid.location && currentFix.valid.altitude && currentFix.valid.satellites) {
       Serial.print("latitude: ");
       Serial.println(currentFix.latitude());
       Serial.print("longitude: ");
       Serial.println(currentFix.longitude());
       Serial.print("altitude: ");
       Serial.println(currentFix.altitude());
+      Serial.print("sats: ");
+      Serial.println(currentFix.satellites);
 
-      if (currentFix.valid.satellites) {
-        Serial.print("sats: ");
-        Serial.println(currentFix.satellites);
-      }
+      
+      Serial.println("Sending LoRa Data...");
+      unsigned char loraData[] = {currentFix.satellites};
+      lora.sendData(loraData, sizeof(loraData), lora.frameCounter);
+      Serial.print("Frame Counter: ");Serial.println(lora.frameCounter);
+      lora.frameCounter++;
+      
     }
 /*
     Serial.println("Sending LoRa Data...");
