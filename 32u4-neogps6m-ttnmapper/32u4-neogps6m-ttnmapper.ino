@@ -1,48 +1,35 @@
-#include <NeoGPS_cfg.h>
+#include <NMEAGPS.h>
 #include <ublox/ubxGPS.h>
 
-//======================================================================
-//  Program: ublox.ino
-//
-//  Prerequisites:
-//     1) You have a ublox GPS device
-//     2) PUBX.ino works with your device
-//     3) You have installed the ubxGPS.* and ubxmsg.* files.
-//     4) At least one UBX message has been enabled in ubxGPS.h.
-//     5) Implicit Merging is disabled in NMEAGPS_cfg.h.
-//
-//  Description:  This program parses UBX binary protocal messages from
-//     ublox devices.  It shows how to acquire the information necessary
-//     to use the GPS Time-Of-Week in many UBX messages.  As an offset
-//     from midnight Sunday morning (GPS time), you also need the current 
-//     UTC time (this is *not* GPS time) and the current number of GPS 
-//     leap seconds.
-//
-//  Serial is for debug output to the Serial Monitor window.
-//
-//  License:
-//    Copyright (C) 2014-2017, SlashDevin
-//
-//    This file is part of NeoGPS
-//
-//    NeoGPS is free software: you can redistribute it and/or modify
-//    it under the terms of the GNU General Public License as published by
-//    the Free Software Foundation, either version 3 of the License, or
-//    (at your option) any later version.
-//
-//    NeoGPS is distributed in the hope that it will be useful,
-//    but WITHOUT ANY WARRANTY; without even the implied warranty of
-//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//    GNU General Public License for more details.
-//
-//    You should have received a copy of the GNU General Public License
-//    along with NeoGPS.  If not, see <http://www.gnu.org/licenses/>.
-//
-//======================================================================
-
 #include <GPSport.h>
-
 #include <Streamers.h>
+
+#include <TinyLoRa.h>
+#include <SPI.h>
+
+//------------------------------------------------------------
+// TTN Settings
+
+// Visit your thethingsnetwork.org device console
+// to create an account, or if you need your session keys.
+
+// Network Session Key (MSB)
+uint8_t NwkSkey[16] = { 0xB3, 0x41, 0xD4, 0x27, 0x55, 0x80, 0x7B, 0xB2, 0xAE, 0x7E, 0x92, 0x48, 0xDE, 0xFD, 0xB3, 0x65 };
+
+// Application Session Key (MSB)
+uint8_t AppSkey[16] = { 0x60, 0xB3, 0x4A, 0x1F, 0xD9, 0xA3, 0xF7, 0xE4, 0xB6, 0xEA, 0xB3, 0x60, 0x09, 0x7C, 0x78, 0x71 };
+
+// Device Address (MSB)
+uint8_t DevAddr[4] = { 0x26, 0x01, 0x18, 0x1F };
+
+// Pinout for Adafruit Feather 32u4 LoRa
+TinyLoRa lora = TinyLoRa(7, 8);
+
+// Pinout for Adafruit Feather M0 LoRa
+//TinyLoRa lora = TinyLoRa(3, 8);
+
+// How many times data transfer should occur, in seconds
+const unsigned int sendInterval = 5;
 
 //------------------------------------------------------------
 // Check that the config files are set up properly
@@ -108,12 +95,12 @@ public:
         if (!acquiring) {
           acquiring = true;
           dotPrint = millis();
-          DEBUG_PORT.print( F("Acquiring...") );
+          Serial.print( F("Acquiring...") );
           requestNavStatus = true;
 
         } else if (millis() - dotPrint > 1000UL) {
           dotPrint = millis();
-          DEBUG_PORT << '.';
+          Serial << '.';
 
           static uint8_t requestPeriod;
           if ((++requestPeriod & 0x07) == 0)
@@ -126,14 +113,14 @@ public:
 
       } else {
         if (acquiring)
-          DEBUG_PORT << '\n';
-        DEBUG_PORT << F("Acquired status: ") << (uint8_t) fix().status << '\n';
+          Serial << '\n';
+        Serial << F("Acquired status: ") << (uint8_t) fix().status << '\n';
 
         #if defined(GPS_FIX_TIME) & defined(GPS_FIX_DATE) & \
             defined(UBLOX_PARSE_TIMEGPS)
 
           if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_TIMEGPS ))
-            DEBUG_PORT.println( F("enable TIMEGPS failed!") );
+            Serial.println( F("enable TIMEGPS failed!") );
 
           state = GETTING_LEAP_SECONDS;
         #else
@@ -151,14 +138,14 @@ public:
           defined(UBLOX_PARSE_TIMEGPS)
 
         if (GPSTime::leap_seconds != 0) {
-          DEBUG_PORT << F("Acquired leap seconds: ") << GPSTime::leap_seconds << '\n';
+          Serial << F("Acquired leap seconds: ") << GPSTime::leap_seconds << '\n';
 
           if (!disable_msg( ublox::UBX_NAV, ublox::UBX_NAV_TIMEGPS ))
-            DEBUG_PORT.println( F("disable TIMEGPS failed!") );
+            Serial.println( F("disable TIMEGPS failed!") );
 
           #if defined(UBLOX_PARSE_TIMEUTC)
             if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_TIMEUTC ))
-              DEBUG_PORT.println( F("enable TIMEUTC failed!") );
+              Serial.println( F("enable TIMEUTC failed!") );
             state = GETTING_UTC;
           #else
             start_running();
@@ -182,8 +169,8 @@ public:
         unlock();
 
         if (safe && (sow != 0)) {
-          DEBUG_PORT << F("Acquired UTC: ") << utc << '\n';
-          DEBUG_PORT << F("Acquired Start-of-Week: ") << sow << '\n';
+          Serial << F("Acquired UTC: ") << utc << '\n';
+          Serial << F("Acquired Start-of-Week: ") << sow << '\n';
 
           start_running();
         }
@@ -199,37 +186,37 @@ public:
 
       #if defined(UBLOX_PARSE_POSLLH)
         if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_POSLLH ))
-          DEBUG_PORT.println( F("enable POSLLH failed!") );
+          Serial.println( F("enable POSLLH failed!") );
 
         enabled_msg_with_time = true;
       #endif
 
       #if defined(UBLOX_PARSE_PVT)
         if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_PVT ))
-          DEBUG_PORT.println( F("enable PVT failed!") );
+          Serial.println( F("enable PVT failed!") );
 
         enabled_msg_with_time = true;
       #endif
 
       #if defined(UBLOX_PARSE_VELNED)
         if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_VELNED ))
-          DEBUG_PORT.println( F("enable VELNED failed!") );
+          Serial.println( F("enable VELNED failed!") );
 
         enabled_msg_with_time = true;
       #endif
 
       #if defined(UBLOX_PARSE_DOP)
         if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_DOP ))
-          DEBUG_PORT.println( F("enable DOP failed!") );
+          Serial.println( F("enable DOP failed!") );
         else
-          DEBUG_PORT.println( F("enabled DOP.") );
+          Serial.println( F("enabled DOP.") );
 
         enabled_msg_with_time = true;
       #endif
 
       #if defined(UBLOX_PARSE_SVINFO)
         if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_SVINFO ))
-          DEBUG_PORT.println( F("enable SVINFO failed!") );
+          Serial.println( F("enable SVINFO failed!") );
         
         enabled_msg_with_time = true;
       #endif
@@ -239,19 +226,19 @@ public:
         #if defined(GPS_FIX_TIME) & defined(GPS_FIX_DATE)
           if (enabled_msg_with_time &&
               !disable_msg( ublox::UBX_NAV, ublox::UBX_NAV_TIMEUTC ))
-            DEBUG_PORT.println( F("disable TIMEUTC failed!") );
+            Serial.println( F("disable TIMEUTC failed!") );
 
         #elif defined(GPS_FIX_TIME) | defined(GPS_FIX_DATE)
           // If both aren't defined, we can't convert TOW to UTC,
           // so ask for the separate UTC message.
           if (!enable_msg( ublox::UBX_NAV, ublox::UBX_NAV_TIMEUTC ))
-            DEBUG_PORT.println( F("enable TIMEUTC failed!") );
+            Serial.println( F("enable TIMEUTC failed!") );
         #endif
 
       #endif
 
       state = RUNNING;
-      trace_header( DEBUG_PORT );
+      trace_header( Serial );
 
     } // start_running
 
@@ -306,16 +293,15 @@ static void disableUBX()
 void setup()
 {
   // Start the normal trace output
-  DEBUG_PORT.begin(9600);
-  while (!DEBUG_PORT)
-    ;
+  Serial.begin(9600);
+  while (!Serial);
 
-  DEBUG_PORT.print( F("ublox binary protocol example started.\n") );
-  DEBUG_PORT << F("fix object size = ") << sizeof(gps.fix()) << '\n';
-  DEBUG_PORT << F("ubloxGPS object size = ") << sizeof(ubloxGPS) << '\n';
-  DEBUG_PORT << F("MyGPS object size = ") << sizeof(gps) << '\n';
-  DEBUG_PORT.println( F("Looking for GPS device on " GPS_PORT_NAME) );
-  DEBUG_PORT.flush();
+  Serial.print( F("ublox binary protocol example started.\n") );
+  Serial << F("fix object size = ") << sizeof(gps.fix()) << '\n';
+  Serial << F("ubloxGPS object size = ") << sizeof(ubloxGPS) << '\n';
+  Serial << F("MyGPS object size = ") << sizeof(gps) << '\n';
+  Serial.println( F("Looking for GPS device on " GPS_PORT_NAME) );
+  Serial.flush();
 
   // Start the UART for the GPS device
   #ifdef NMEAGPS_INTERRUPT_PROCESSING
@@ -323,77 +309,60 @@ void setup()
   #endif
   gpsPort.begin(9600);
 
-  // Turn off the preconfigured NMEA standard messages
-  configNMEA( 0 );
+  configNMEA( 1 );
 
   // Turn off things that may be left on by a previous build
   disableUBX();
 
-  #if 0
-    // Test a Neo M8 message -- should be rejected by Neo-6 and Neo7
-    ublox::cfg_nmea_v1_t test;
-
-    test.always_output_pos  = false; // invalid or failed
-    test.output_invalid_pos = false;
-    test.output_invalid_time= false;
-    test.output_invalid_date= false;
-    test.use_GPS_only       = false;
-    test.output_heading     = false; // even if frozen
-    test.__not_used__       = false;
-
-    test.nmea_version = ublox::cfg_nmea_v1_t::NMEA_V_4_0;
-    test.num_sats_per_talker_id = ublox::cfg_nmea_v1_t::SV_PER_TALKERID_UNLIMITED;
-
-    test.compatibility_mode = false;
-    test.considering_mode   = true;
-    test.max_line_length_82 = false;
-    test.__not_used_1__     = 0;
-
-    test.filter_gps    = false;
-    test.filter_sbas   = false;
-    test.__not_used_2__= 0;
-    test.filter_qzss   = false;
-    test.filter_glonass= false;
-    test.filter_beidou = false;
-    test.__not_used_3__= 0;
-
-    test.proprietary_sat_numbering = false;
-    test.main_talker_id = ublox::cfg_nmea_v1_t::MAIN_TALKER_ID_GP;
-    test.gsv_uses_main_talker_id = true;
-    test.beidou_talker_id[0] = 'G';
-    test.beidou_talker_id[1] = 'P';
-
-    DEBUG_PORT << F("CFG_NMEA result = ") << gps.send( test );
-  #endif
-
   while (!gps.running())
     if (gps.available( gpsPort ))
       gps.read();
+
+  // Initialize LoRa
+  Serial.print("Starting LoRa...");
+  // define multi-channel sending
+  lora.setChannel(MULTI);
+  // set datarate
+  lora.setDatarate(SF7BW125);
+  if(!lora.begin())
+  {
+    Serial.println("Failed");
+    Serial.println("Check your radio");
+    while(true);
+  }
+  Serial.println("OK");
 }
 
 //--------------------------
 
 void loop()
 {
-  if (gps.available( gpsPort ))
-    trace_all( DEBUG_PORT, gps, gps.read() );
+  if (gps.available( gpsPort )) {
+    //trace_all( Serial, gps, gps.read() );
 
-  // If the user types something, reset the message configuration
-  //   back to a normal set of NMEA messages.  This makes it
-  //   convenient to switch to another example program that
-  //   expects a typical set of messages.  This also saves
-  //   putting those config messages in every other example.
+    gps_fix currentFix = gps.read();
 
-  if (DEBUG_PORT.available()) {
-    do { DEBUG_PORT.read(); } while (DEBUG_PORT.available());
-    DEBUG_PORT.println( F("Stopping...") );
+//    unsigned char loraData[11] = {"hello LoRa"};
+    if (currentFix.valid.location && currentFix.valid.altitude) {
+      Serial.print("latitude: ");
+      Serial.println(currentFix.latitude());
+      Serial.print("longitude: ");
+      Serial.println(currentFix.longitude());
+      Serial.print("altitude: ");
+      Serial.println(currentFix.altitude());
 
-    configNMEA( 1 );
-    disableUBX();
-    gpsPort.flush();
-    gpsPort.end();
-
-    DEBUG_PORT.println( F("STOPPED.") );
-    for (;;);
+      if (currentFix.valid.satellites) {
+        Serial.print("sats: ");
+        Serial.println(currentFix.satellites);
+      }
+    }
+/*
+    Serial.println("Sending LoRa Data...");
+    lora.sendData(loraData, sizeof(loraData), lora.frameCounter);
+    Serial.print("Frame Counter: ");Serial.println(lora.frameCounter);
+    lora.frameCounter++;
+*/
+    Serial.println("delaying...");
+    delay(sendInterval * 1000);
   }
 }
