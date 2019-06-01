@@ -5,7 +5,6 @@
 #include <Streamers.h>
 
 #include <TinyLoRa.h>
-#include <SPI.h>
 
 //------------------------------------------------------------
 // TTN Settings
@@ -14,13 +13,13 @@
 // to create an account, or if you need your session keys.
 
 // Network Session Key (MSB)
-uint8_t NwkSkey[16] = {  };
+uint8_t NwkSkey[16] = { };
 
 // Application Session Key (MSB)
-uint8_t AppSkey[16] = {  };
+uint8_t AppSkey[16] = { };
 
 // Device Address (MSB)
-uint8_t DevAddr[4] = {  };
+uint8_t DevAddr[4] = { };
 
 // Pinout for Adafruit Feather 32u4 LoRa
 TinyLoRa lora = TinyLoRa(7, 8);
@@ -29,7 +28,7 @@ TinyLoRa lora = TinyLoRa(7, 8);
 //TinyLoRa lora = TinyLoRa(3, 8);
 
 // How many times data transfer should occur, in seconds
-const unsigned int sendInterval = 5;
+const unsigned int sendInterval = 10;
 
 //------------------------------------------------------------
 // Check that the config files are set up properly
@@ -238,7 +237,6 @@ public:
       #endif
 
       state = RUNNING;
-      trace_header( Serial );
 
     } // start_running
 
@@ -296,13 +294,6 @@ void setup()
   Serial.begin(9600);
   while (!Serial);
 
-  Serial.print( F("ublox binary protocol example started.\n") );
-  Serial << F("fix object size = ") << sizeof(gps.fix()) << '\n';
-  Serial << F("ubloxGPS object size = ") << sizeof(ubloxGPS) << '\n';
-  Serial << F("MyGPS object size = ") << sizeof(gps) << '\n';
-  Serial.println( F("Looking for GPS device on " GPS_PORT_NAME) );
-  Serial.flush();
-
   // Start the UART for the GPS device
   #ifdef NMEAGPS_INTERRUPT_PROCESSING
     gpsPort.attachInterrupt( GPSisr );
@@ -331,6 +322,7 @@ void setup()
     while(true);
   }
   Serial.println("OK");
+  Serial.println("FrameCounter,\tLat,\tLong,\tAlt,\tSats");
 }
 
 //--------------------------
@@ -338,35 +330,44 @@ void setup()
 void loop()
 {
   if (gps.available( gpsPort )) {
-    //trace_all( Serial, gps, gps.read() );
-
     gps_fix currentFix = gps.read();
 
     if (currentFix.valid.location && currentFix.valid.altitude && currentFix.valid.satellites) {
-      Serial.print("latitude: ");
-      Serial.println(currentFix.latitude());
-      Serial.print("longitude: ");
-      Serial.println(currentFix.longitude());
-      Serial.print("altitude: ");
-      Serial.println(currentFix.altitude());
-      Serial.print("sats: ");
-      Serial.println(currentFix.satellites);
-
+      static uint8_t payload[32];
+      uint8_t idx = 0;
+      uint32_t data;
       
-      Serial.println("Sending LoRa Data...");
-      unsigned char loraData[] = {currentFix.satellites};
-      lora.sendData(loraData, sizeof(loraData), lora.frameCounter);
-      Serial.print("Frame Counter: ");Serial.println(lora.frameCounter);
+      data = currentFix.latitudeL();
+      payload[idx++] = data >> 24;
+      payload[idx++] = data >> 16;
+      payload[idx++] = data >> 8;
+      payload[idx++] = data & 0xff;
+      data = currentFix.longitudeL();
+      payload[idx++] = data >> 24;
+      payload[idx++] = data >> 16;
+      payload[idx++] = data >> 8;
+      payload[idx++] = data & 0xff;
+      data = currentFix.altitude_cm();
+      payload[idx++] = data >> 8;
+      payload[idx++] = data & 0xff;
+      data = currentFix.satellites;
+      payload[idx++] = data >> 8;
+      payload[idx++] = data & 0xff;
+      
+      lora.sendData(payload, sizeof(payload), lora.frameCounter);
+      Serial.print(lora.frameCounter);
+      Serial.print(",\t\t");
+      Serial.print(currentFix.latitude());
+      Serial.print(",\t");
+      Serial.print(currentFix.longitude());
+      Serial.print(",\t");
+      Serial.print(currentFix.altitude());
+      Serial.print(",\t");
+      Serial.println(currentFix.satellites);
       lora.frameCounter++;
       
     }
-/*
-    Serial.println("Sending LoRa Data...");
-    lora.sendData(loraData, sizeof(loraData), lora.frameCounter);
-    Serial.print("Frame Counter: ");Serial.println(lora.frameCounter);
-    lora.frameCounter++;
-*/
-    Serial.println("delaying...");
+
     delay(sendInterval * 1000);
   }
 }
